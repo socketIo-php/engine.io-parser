@@ -1,0 +1,6 @@
+{
+  "name": "socketio-php/engine.io-parser",
+  "description": "Parser for the engine.io protocol, used by client and server",
+  "type": "library",
+  "license": "MIT"
+}
