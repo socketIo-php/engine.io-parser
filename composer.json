@@ -2,5 +2,13 @@
   "name": "socketio-php/engine.io-parser",
   "description": "Parser for the engine.io protocol, used by client and server",
   "type": "library",
+  "require": {
+    "php": ">=7.1.22"
+  },
+  "autoload": {
+    "psr-4": {
+      "EngineIoParser\\": "src/"
+    }
+  },
   "license": "MIT"
 }
