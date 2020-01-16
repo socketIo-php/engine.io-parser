@@ -5,6 +5,10 @@ Parser for the engine.io protocol, used by client and server
 
 - version >= 2.2.0
 
+# depend php's extension
+
+- mb_string
+
 # Test
 
 ```shell
