@@ -432,4 +432,190 @@ final class ParserTest extends TestCase
 
         $this->assertEquals($err, $error);
     }
+
+    /**
+     * @group payloads
+     * @group payloadsBasicFunctionality
+     */
+    public function testShouldEncodePayloadsAsStrings()
+    {
+        $data = [
+            ['type' => 'ping'],
+            ['type' => 'pong'],
+        ];
+
+        Parser::encodePayload($data, function ($data) {
+            // 1:21:3
+            $this->assertIsString($data);
+        });
+    }
+
+    /**
+     * @group payloads
+     * @group payloadsBasicFunctionality
+     */
+    public function testShouldEncodeStringPayloadsAsStringsEvenIfBinarySupported()
+    {
+        $data = [
+            ['type' => 'ping'],
+            ['type' => 'pong'],
+        ];
+
+        Parser::encodePayload($data, true, function ($data) {
+            // 1:21:3
+            $this->assertIsString($data);
+        });
+    }
+
+    /**
+     * @group payloads
+     * @group payloadsEncodingAndDecoding
+     */
+    public function testShouldEncodeDecodePackets()
+    {
+        $seen = 0;
+        $data = [
+            ['type' => 'message', 'data' => 'a']
+        ];
+
+        Parser::encodePayload($data, true, function ($data) use (&$seen) {
+            // 2:4a
+            Parser::decodePayload($data, function ($packet, $index, $total) use (&$seen) {
+                $isLast = $index + 1 == $total;
+                $this->assertEquals(true, $isLast);
+                $seen++;
+            });
+        });
+
+        $data = [
+            ['type' => 'message', 'data' => 'a'],
+            ['type' => 'ping']
+        ];
+        Parser::encodePayload($data, true, function ($data) use (&$seen) {
+            Parser::decodePayload($data, function ($packet, $index, $total) use (&$seen) {
+                $isLast = $index + 1 == $total;
+                if (!$isLast) {
+                    $this->assertEquals($packet['type'], 'message');
+                } else {
+                    $this->assertEquals($packet['type'], 'ping');
+                    if ($seen == 2) {
+                        $this->assertEquals('done', 'done');
+                    }
+                }
+                $seen++;
+            });
+        });
+    }
+
+    /**
+     * @group   payloads
+     * @group   payloadsEncodingAndDecoding
+     */
+    public function testShouldEncodeOrDecodeEmptyPayloads()
+    {
+        // note::callback not running
+        $data = [];
+        Parser::encodePayload($data, function ($data) {
+            $this->assertIsString($data);
+            Parser::decodePayload($data, function ($packet, $index, $total) {
+                $this->assertEquals('open', $packet['type']);
+                $isLast = $index + 1 == $total;
+                $this->assertEquals(true, $isLast);
+            });
+        });
+    }
+
+    /**
+     * @group   payloads
+     * @group   payloadsEncodingAndDecoding
+     */
+    public function testShouldNotUtf8EncodeWhenDealingWithStringsOnly()
+    {
+        $data = [
+            ['type' => 'message', 'data' => '€€€'],
+            ['type' => 'message', 'data' => 'α']
+        ];
+        Parser::encodePayload($data, function ($data) {
+            $this->assertEquals('4:4€€€2:4α', $data);
+        });
+    }
+
+    /**
+     * @group   payloads
+     * @group   payloadsDecodingErrorHandling
+     */
+    public function testShouldErrOnBadPayloadFormat()
+    {
+        $err = [
+            'type' => 'error',
+            'data' => 'parser error'
+        ];
+
+        Parser::decodePayload('1!', function ($packet, $index, $total) use ($err) {
+            $isLast = $index + 1 == $total;
+            $this->assertEquals($err, $packet);
+            $this->assertEquals(true, $isLast);
+        });
+
+        Parser::decodePayload('', function ($packet, $index, $total) use ($err) {
+            $isLast = $index + 1 == $total;
+            $this->assertEquals($err, $packet);
+            $this->assertEquals(true, $isLast);
+        });
+
+        Parser::decodePayload('))', function ($packet, $index, $total) use ($err) {
+            $isLast = $index + 1 == $total;
+            $this->assertEquals($err, $packet);
+            $this->assertEquals(true, $isLast);
+        });
+    }
+
+    /**
+     * @group   payloads
+     * @group   payloadsDecodingErrorHandling
+     */
+    public function testShouldErrOnBadPayloadLength()
+    {
+        $err = [
+            'type' => 'error',
+            'data' => 'parser error'
+        ];
+
+        Parser::decodePayload('1:', function ($packet, $index, $total) use ($err) {
+            $isLast = $index + 1 == $total;
+            $this->assertEquals($err, $packet);
+            $this->assertEquals(true, $isLast);
+        });
+    }
+
+    /**
+     * @group   payloads
+     * @group   payloadsDecodingErrorHandling
+     */
+    public function testShouldErrOnBadPacketLength()
+    {
+        $err = [
+            'type' => 'error',
+            'data' => 'parser error'
+        ];
+
+        Parser::decodePayload('3:99:', function ($packet, $index, $total) use ($err) {
+            $isLast = $index + 1 == $total;
+            $this->assertEquals($err, $packet);
+            $this->assertEquals(true, $isLast);
+        });
+
+        Parser::decodePayload('1:aa:', function ($packet, $index, $total) use ($err) {
+            $isLast = $index + 1 == $total;
+            $this->assertEquals($err, $packet);
+            $this->assertEquals(true, $isLast);
+        });
+
+        Parser::decodePayload('1:a2:b', function ($packet, $index, $total) use ($err) {
+            $isLast = $index + 1 == $total;
+            $this->assertEquals($err, $packet);
+            $this->assertEquals(true, $isLast);
+        });
+    }
+
 }
