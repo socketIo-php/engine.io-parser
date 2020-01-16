@@ -29,7 +29,7 @@ class Parser
             'data' => 'parser error'
         ];
 
-        return json_encode($data);
+        return $data;
     }
 
     /**
@@ -54,7 +54,7 @@ class Parser
      *
      * @return string
      */
-    public static function encodePacket($packet, $supportsBinary, $utf8encode, $callback)
+    public static function encodePacket($packet, $supportsBinary = null, $utf8encode = null, $callback = null)
     {
         // is function
         if (is_callable($supportsBinary)) {
@@ -68,26 +68,18 @@ class Parser
             $utf8encode = null;
         }
 
-        /*
-              if (Buffer.isBuffer(packet.data)) {
-                    return encodeBuffer(packet, supportsBinary, callback);
-              } else if (packet.data && (packet.data.buffer || packet.data) instanceof ArrayBuffer) {
-                    return encodeBuffer({ type: packet.type, data: arrayBufferToBuffer(packet.data) }, supportsBinary, callback);
-              }
-        */
-
-        if (is_string($packet['data'])) {
-            return self::encodeBuffer($packet, $supportsBinary, $callback);
-        } elseif (is_array($packet['data'])) {
-//            return self::encodeBuffer($packet, $supportsBinary, $callback);
-        }
-
         // Sending data as a utf-8 string
         $encoded = PacketEnum::getCodeByText($packet['type']);
 
         // data fragment is optional
         if (isset($packet['data']) && !empty($packet['data'])) {
-            $encoded .= $utf8encode ? Utf8::encode($packet['data'], ['strict' => false]) : $packet['data'];
+            if ($utf8encode === true && strpos($packet['data'], '\u') !== false) {
+                // todo : see test: testShouldEncodeAStringMessageWithLoneSurrogatesReplacedByUFFFD
+            }
+
+            $encoded .= $utf8encode ? Utf8::encode((is_array($packet['data']) ? implode(',',
+                $packet['data']) : $packet['data']),
+                ['strict' => false]) : (is_array($packet['data']) ? implode(',', $packet['data']) : $packet['data']);
         }
 
         return $callback('' . $encoded);
@@ -131,5 +123,94 @@ class Parser
         $message .= base64_encode($data);
 
         return $callback($message);
+    }
+
+    /**
+     * Decodes a packet. Data also available as an ArrayBuffer if requested.
+     *
+     * @param $data
+     * @param $binaryType
+     * @param $utf8decode
+     *
+     * @return array with `type` and `data` (if any)
+     */
+    public static function decodePacket($data, $binaryType = null, $utf8decode = null)
+    {
+        if ($data === null) {
+            return self::getErr();
+        }
+
+        $type = null;
+
+        // String data
+        if (is_string($data)) {
+            $type = $data{0};
+
+            // is unicode
+            if (preg_match('/^\\\u/', substr($data, 1))) {
+                $data = $type . self::unicodeDecode(substr($data, 1));
+            }
+
+            if ($type === 'b') {
+                return self::decodeBase64Packet(substr($data, 1));
+            }
+
+            if ($utf8decode) {
+                $data = self::tryDecode($data);
+                if ($data === false) {
+                    return self::getErr();
+                }
+            }
+
+            if (!isset(self::getPacketList()[$type])) {
+                return self::getErr();
+            }
+
+            if (strlen($data) > 1) {
+                return [
+                    'type' => self::getPacketList()[$type],
+                    'data' => substr($data, 1)
+                ];
+            } else {
+                return [
+                    'type' => self::getPacketList()[$type]
+                ];
+            }
+        }
+
+        $type = $data[0];
+
+        return [
+            'type' => self::getPacketList()[$type],
+            'data' => array_slice($data, 1)
+        ];
+    }
+
+    public static function decodeBase64Packet($msg)
+    {
+        $type = self::getPacketList()[$msg{0}];
+        $data = base64_encode(substr($msg, 1));
+
+        return ['type' => $type, 'data' => $data];
+    }
+
+    public static function tryDecode($data)
+    {
+        try {
+            $data = Utf8::decode($data, ['strict' => false]);
+        } catch (\Exception $e) {
+            return false;
+        }
+
+        return $data;
+    }
+
+    private static function unicodeDecode($unicode_str)
+    {
+        $json = '{"str":"' . $unicode_str . '"}';
+        $arr = json_decode($json, true);
+        if (empty($arr)) return '';
+
+        return $arr['str'];
     }
 }

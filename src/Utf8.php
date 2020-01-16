@@ -20,20 +20,54 @@ class Utf8
 
     private static $byteIndex;
 
+    private static function jsCharCodeAt($str, $index)
+    {
+        $utf16 = mb_convert_encoding($str, 'UTF-16LE', 'UTF-8');
+
+        return ord($utf16[$index * 2]) + (ord($utf16[$index * 2 + 1]) << 8);
+    }
+
+    private static function jsStringFromCharCode($codes)
+    {
+        if (is_scalar($codes)) $codes = func_get_args();
+        $str = '';
+        foreach ($codes as $code) {
+            preg_match_all("/(\d{2,5})/", $code, $a);
+            $a = $a[0];
+            $utf = '';
+            foreach ($a as $dec) {
+                if ($dec < 128) {
+                    $utf .= chr($dec);
+                } else if ($dec < 2048) {
+                    $utf .= chr(192 + (($dec - ($dec % 64)) / 64));
+                    $utf .= chr(128 + ($dec % 64));
+                } else {
+                    $utf .= chr(224 + (($dec - ($dec % 4096)) / 4096));
+                    $utf .= chr(128 + ((($dec % 4096) - ($dec % 64)) / 64));
+                    $utf .= chr(128 + ($dec % 64));
+                }
+            }
+
+            $str .= $utf;
+        }
+
+        return $str;
+    }
+
     // Taken from https://mths.be/punycode
     private static function ucs2decode($string)
     {
         $output = [];
         $counter = 0;
-        $length = strlen($string);
+        $length = mb_strlen($string);
         $value = null;
         $extra = null;
 
         while ($counter < $length) {
-            $value = ord($length[$counter++]);
+            $value = self::jsCharCodeAt($string, $counter++);
             if ($value >= 0xD800 && $value <= 0xDBFF && $counter < $length) {
                 // high surrogate, and there is a next character
-                $extra = ord($length[$counter++]);
+                $extra = self::jsCharCodeAt($string, $counter++);
                 if (($extra & 0xFC00) == 0xDC00) { // low surrogate
                     array_push($output, (($value & 0x3FF) << 10) + ($extra & 0x3FF) + 0x10000);
                 } else {
@@ -61,10 +95,10 @@ class Utf8
             $value = $array[$index];
             if ($value > 0xFFFF) {
                 $value -= 0x10000;
-                $output .= chr(self::treeRightArrow($value, 10) & 0x3FF | 0xD800);
+                $output .= self::jsStringFromCharCode(self::treeRightArrow($value, 10) & 0x3FF | 0xD800);
                 $value = 0xDC00 | $value & 0x3FF;
             }
-            $output .= chr($value);
+            $output .= self::jsStringFromCharCode($value);
         }
 
         return $output;
@@ -89,29 +123,29 @@ class Utf8
 
     private static function createByte($codePoint, $shift)
     {
-        return chr((($codePoint >> $shift) & 0x3F) | 0x80);
+        return self::jsStringFromCharCode((($codePoint >> $shift) & 0x3F) | 0x80);
     }
 
     private static function encodeCodePoint($codePoint, $strict)
     {
         if (($codePoint & 0xFFFFFF80) == 0) { // 1-byte sequence
-            return chr($codePoint);
+            return self::jsStringFromCharCode($codePoint);
         }
         $symbol = '';
         if (($codePoint & 0xFFFFF800) == 0) { // 2-byte sequence
-            $symbol = chr((($codePoint >> 6) & 0x1F) | 0xC0);
+            $symbol = self::jsStringFromCharCode((($codePoint >> 6) & 0x1F) | 0xC0);
         } else if (($codePoint & 0xFFFF0000) == 0) { // 3-byte sequence
             if (!self::checkScalarValue($codePoint, $strict)) {
                 $codePoint = 0xFFFD;
             }
-            $symbol = chr((($codePoint >> 12) & 0x0F) | 0xE0);
-            $symbol += self::createByte($codePoint, 6);
+            $symbol = self::jsStringFromCharCode((($codePoint >> 12) & 0x0F) | 0xE0);
+            $symbol .= self::createByte($codePoint, 6);
         } else if (($codePoint & 0xFFE00000) == 0) { // 4-byte sequence
-            $symbol = chr((($codePoint >> 18) & 0x07) | 0xF0);
-            $symbol += self::createByte($codePoint, 12);
-            $symbol += self::createByte($codePoint, 6);
+            $symbol = self::jsStringFromCharCode((($codePoint >> 18) & 0x07) | 0xF0);
+            $symbol .= self::createByte($codePoint, 12);
+            $symbol .= self::createByte($codePoint, 6);
         }
-        $symbol += chr(($codePoint & 0x3F) | 0x80);
+        $symbol .= self::jsStringFromCharCode(($codePoint & 0x3F) | 0x80);
 
         return $symbol;
     }
@@ -128,7 +162,7 @@ class Utf8
         $byteString = '';
         while (++$index < $length) {
             $codePoint = $codePoints[$index];
-            $byteString += self::encodeCodePoint($codePoint, $strict);
+            $byteString .= self::encodeCodePoint($codePoint, $strict);
         }
 
         return $byteString;
