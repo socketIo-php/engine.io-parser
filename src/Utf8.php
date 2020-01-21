@@ -20,14 +20,14 @@ class Utf8
 
     private static $byteIndex;
 
-    private static function jsCharCodeAt($str, $index)
+    public static function jsCharCodeAt($str, $index)
     {
         $utf16 = mb_convert_encoding($str, 'UTF-16LE', 'UTF-8');
 
         return ord($utf16[$index * 2]) + (ord($utf16[$index * 2 + 1]) << 8);
     }
 
-    private static function jsStringFromCharCode($codes)
+    public static function jsStringFromCharCode($codes)
     {
         if (is_scalar($codes)) $codes = func_get_args();
         $str = '';

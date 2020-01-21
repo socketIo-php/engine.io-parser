@@ -339,7 +339,119 @@ class Parser
 
     }
 
-    public static function tryDecode($data)
+    public static function encodePayloadAsBinary($packets, $callback)
+    {
+        if (!count($packets)) {
+            return $callback([]);
+        }
+
+        self::map($packets, [Parser::class, 'encodeOneBinaryPacket'], function ($err, $results) use ($callback) {
+            return $callback(implode('', $results));
+        });
+    }
+
+    public static function encodeOneBinaryPacket($p, $doneCallback)
+    {
+        $onBinaryPacketEncode = function ($packet) use ($doneCallback) {
+            $sizeBuffer = [];
+            if (is_string($packet)) {
+                $encodeLength = '' . mb_strlen($packet);
+                $sizeBuffer[] = chr(0);
+                for ($i = 0; $i < mb_strlen($encodeLength); $i++) {
+                    $sizeBuffer[] = chr((int)$encodeLength{$i});
+                }
+                $sizeBuffer[] = chr(255);
+
+                return $doneCallback(null, implode('', $sizeBuffer) . self::stringToBuffer($packet));
+            }
+
+            $sizeBuffer = [];
+            $encodeLength = '' . count($packet);
+            $sizeBuffer[] = chr(1);
+            for ($i = 0; $i < mb_strlen($encodeLength); $i++) {
+                $sizeBuffer[] = chr((int)$encodeLength{$i});
+            }
+            $sizeBuffer[] = chr(255);
+
+            $doneCallback(null, implode('', $sizeBuffer) . $packet);
+
+            return null;
+        };
+
+        self::encodePacket($p, true, true, $onBinaryPacketEncode);
+    }
+
+    private static function stringToBuffer($string)
+    {
+        $buf = $string;
+
+        return $buf;
+    }
+
+    private static function bufferToString($buffer)
+    {
+        $str = $buffer;
+
+        return $str;
+    }
+
+    /**
+     * Decodes data when a payload is maybe expected. Strings are decoded by
+     * interpreting each byte as a key code for entries marked to start with 0. See
+     * description of encodePayloadAsBinary
+     *
+     * @param      $data
+     * @param      $binaryType
+     * @param null $callBack
+     *
+     * @return mixed
+     */
+    public static function decodePayloadAsBinary($data, $binaryType, $callBack = null)
+    {
+        if (is_callable($binaryType)) {
+            $callBack = $binaryType;
+            $binaryType = null;
+        }
+
+        $bufferTail = $data;
+        $buffers = [];
+        $i = null;
+
+        while (mb_strlen($bufferTail) > 0) {
+            $strLen = '';
+            $isString = ord($bufferTail{0}) === 0;
+            for ($i = 1; ; $i++) {
+                if (ord($bufferTail{$i}) === 255) break;
+                // 310 = char length of Number.MAX_VALUE
+                if (mb_strlen($strLen) > 310) {
+                    return $callBack(self::getErr(), 0, 1);
+                }
+
+                $strLen .= '' . ord($bufferTail{$i});
+            }
+
+            $bufferTail = substr($bufferTail, mb_strlen($strLen) + 1);
+
+            $msgLength = (int)$strLen;
+
+            $msg = substr($bufferTail, 1, $msgLength + 1);
+            if ($isString) {
+                $msg = self::bufferToString($msg);
+            }
+
+            array_push($buffers, $msg);
+            $bufferTail = substr($bufferTail, $msgLength + 1);
+        }
+
+        $total = count($buffers);
+        for ($i = 0; $i < $total; $i++) {
+            $buffer = $buffers[$i];
+            $callBack(self::decodePacket($buffer, $binaryType, true), $i, $total);
+        }
+    }
+
+
+    private static function tryDecode($data)
     {
         try {
             $data = Utf8::decode($data, ['strict' => false]);

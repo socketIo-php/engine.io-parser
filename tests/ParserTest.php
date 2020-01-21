@@ -618,4 +618,33 @@ final class ParserTest extends TestCase
         });
     }
 
+    /**
+     * @group   binaryPacket
+     * @group   binaryPacketEncodingAndDecoding
+     */
+    public function testShouldEncodeBinaryPacket()
+    {
+        $data = [
+            [
+                'type' => 'message',
+                'data' => 'firstBuffer'
+            ],
+            [
+                'type' => 'message',
+                'data' => 'secondBuffer'
+            ],
+        ];
+
+        Parser::encodePayloadAsBinary($data, function ($data) {
+            Parser::decodePayloadAsBinary($data, function ($packet, $index, $total) {
+                $isLast = $index + 1 == $total;
+                $this->assertEquals($packet['type'], 'message');
+                if (!$isLast) {
+                    $this->assertEquals($packet['data'], 'firstBuffer');
+                } else {
+                    $this->assertEquals($packet['data'], 'secondBuffer');
+                }
+            });
+        });
+    }
 }
