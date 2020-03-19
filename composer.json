@@ -11,7 +11,7 @@
   "autoload": {
     "psr-4": {
       "EngineIoParser\\": "src/",
-      "EngineIoParserTest": "tests/"
+      "EngineIoParserTest\\": "tests/"
     }
   },
   "license": "MIT"
